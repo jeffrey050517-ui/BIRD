@@ -257,7 +257,7 @@
 // ============================================================
 
 const SUPABASE_URL = 'https://pktointrklozentzwljp.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_Ehk_TbyGZ34L-65Fnnt80g_77pbTfpy';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBrdG9pbnRya2xvemVudHp3bGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMTEyMDEsImV4cCI6MjA4OTc4NzIwMX0.wfrzLBKwq8F94R3uvQxvy8kgiZTjgsNCbVpw7CYclX4';
 
 const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -276,6 +276,40 @@ _sb.auth.onAuthStateChange(async (event, session) => {
   // Re-render nav/avatar wherever needed
   if (typeof onAuthChanged === 'function') onAuthChanged(_currentUser, _currentProfile);
 });
+
+// Called every time auth state changes (login / logout / session restore)
+function onAuthChanged(user, profile) {
+  // Update sidebar name & avatar
+  var name = (profile && profile.display_name) || (user && (user.user_metadata && user.user_metadata.full_name)) || (user && user.email) || '访客';
+  var handle = user ? ('@' + (user.email || '').split('@')[0]) : '@guest';
+  ['social-sidebar-name','profile-name-lg'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.textContent = name;
+  });
+  var handleEl = document.getElementById('profile-handle-lg');
+  if(handleEl) handleEl.textContent = handle;
+  // Avatar initial
+  var initial = name[0] || '✦';
+  ['social-sidebar-av','profile-av-lg'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.textContent = initial;
+  });
+  // If user just logged in, close auth modal and show toast
+  if(user) {
+    var modal = document.getElementById('authModal');
+    if(modal && modal.classList.contains('open')) {
+      showAuthView('success');
+      var msg = document.getElementById('authSuccessMsg');
+      var sub = document.getElementById('authSuccessSub');
+      if(msg) msg.textContent = '欢迎，' + name.split(' ')[0];
+      if(sub) sub.textContent = '正在进入你的画布…';
+      setTimeout(function(){ closeModal('authModal'); }, 1800);
+    }
+    // Update settings modal if open
+    var nameEl = document.getElementById('settingsUserName');
+    if(nameEl) nameEl.textContent = name;
+    var emailEl = document.getElementById('settingsUserEmail');
+    if(emailEl) emailEl.textContent = user.email || '';
+  }
+}
 
 
 // ─── AUTH ────────────────────────────────────────────────────
@@ -2870,18 +2904,31 @@ setTimeout(()=>{ closeModal('authModal'); syncSettingsUI(); },1600);
 }
 }
 function doGoogleAuth(){
-const errEl=document.getElementById('authError')||document.getElementById('regError');
-if(errEl) errEl.textContent='Google 登录需要后端接入，即将推出。';
+  const errEl = document.getElementById('authError') || document.getElementById('regError');
+  if(errEl) errEl.textContent = '';
+  _sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin + window.location.pathname
+    }
+  }).then(({ error }) => {
+    if(error && errEl) errEl.textContent = 'Google 登录失败：' + error.message;
+  });
 }
 function doForgot(){
-const email=document.getElementById('forgotEmail').value.trim();
-const errEl=document.getElementById('forgotError');
-if(!email||!email.includes('@')){ errEl.textContent='请输入有效的电子邮件'; return; }
-errEl.textContent='';
-showAuthView('success');
-document.getElementById('authSuccessMsg').textContent='重置链接已发送';
-document.getElementById('authSuccessSub').textContent='请检查你的邮箱：'+email;
-setTimeout(()=>{ closeModal('authModal'); },2000);
+  var email = document.getElementById('forgotEmail').value.trim();
+  var errEl = document.getElementById('forgotError');
+  if(!email || !email.includes('@')){ errEl.textContent='请输入有效的电子邮件'; return; }
+  errEl.textContent = '';
+  _sb.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname
+  }).then(function(res) {
+    if(res.error){ errEl.textContent = res.error.message; return; }
+    showAuthView('success');
+    document.getElementById('authSuccessMsg').textContent = '重置链接已发送';
+    document.getElementById('authSuccessSub').textContent = '请检查你的邮箱：' + email;
+    setTimeout(function(){ closeModal('authModal'); }, 2000);
+  });
 }
 function updateProfileUI(){
 const aName=document.getElementById('avatarName');
